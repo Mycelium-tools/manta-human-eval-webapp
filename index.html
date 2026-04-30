@@ -116,9 +116,9 @@
             <div class="eval-card-title">Test submission</div>
             <div class="eval-card-time">~1 min</div>
           </div>
-          <div class="eval-card-desc">Run through 1 scenario and submit to verify the email pipeline is working end-to-end.</div>
+          <div class="eval-card-desc">Run through 3 scenarios and submit to verify the email pipeline is working end-to-end.</div>
           <div class="eval-card-chips">
-            <span class="eval-chip">1 scenario</span>
+            <span class="eval-chip">3 scenarios</span>
             <span class="eval-chip">Sends test email</span>
           </div>
         </div>
@@ -195,6 +195,7 @@
       <span class="nav-info" id="nav-info"></span>
       <div class="btn-row">
         <button id="btn-prev" onclick="navigate(-1)">← Back</button>
+        <button id="btn-back-to-review" style="display:none;" onclick="returnToReview()">↩ Back to Review</button>
         <button class="primary" id="btn-next" onclick="navigate(1)">Next →</button>
       </div>
     </div>
@@ -209,7 +210,6 @@
     <div class="error-banner" id="error-banner"></div>
     <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:12px;">Submitting will send a copy of your results to you and the research team. If you don't see the email, check your spam folder.</p>
     <div class="btn-row">
-      <button onclick="goBack()">← Go back</button>
       <button class="primary" id="btn-submit" onclick="submitReview()">Submit review →</button>
     </div>
   </div>
@@ -327,6 +327,9 @@
       <div class="success-icon">✓</div>
       <h2>Thank you!</h2>
       <p>Your review has been submitted. A copy of your results has been emailed to you and the research team — if you don't see it, check your spam folder.</p>
+      <div class="btn-row" style="justify-content:center;margin-top:20px;">
+        <button onclick="show('view-home'); renderHomeCards();">← Return to homepage</button>
+      </div>
     </div>
   </div>
 
@@ -418,6 +421,7 @@ let reviewerEmail = "";
 let current = 0;
 let responses = [];
 let activeScenarios = []; // slice of SCENARIOS used for current eval (full or test)
+let editingFromReview = false;
 
 // Judge
 let judgeCurrent = 0;
@@ -426,6 +430,24 @@ let judgeResponses = CONVERSATIONS.map(() => ({score: null, notes: ""}));
 // Writer
 let writerCurrent = 0;
 let writerResponses = [];
+
+let completedQuizzes = { scenario: false, judge: false, writer: false };
+
+const STORAGE = {
+  save(key, val) { try { localStorage.setItem('manta_' + key, JSON.stringify(val)); } catch {} },
+  load(key)      { try { return JSON.parse(localStorage.getItem('manta_' + key)); } catch { return null; } },
+  clear(key)     { localStorage.removeItem('manta_' + key); },
+};
+
+function saveProgress(type) {
+  if (type === 'scenario') {
+    STORAGE.save('scenario_progress', { responses, current });
+  } else if (type === 'judge') {
+    STORAGE.save('judge_progress', { responses: judgeResponses, current: judgeCurrent });
+  } else if (type === 'writer') {
+    STORAGE.save('writer_progress', { responses: writerResponses, current: writerCurrent });
+  }
+}
 
 const API_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
   ? "http://localhost:8000"
@@ -439,8 +461,34 @@ async function initApp() {
     SCENARIOS = await res.json();
     responses = SCENARIOS.map(() => ({realism:null, welfare_stake:null, human_sounding:null, domain_accuracy:null, notes:""}));
     writerResponses = SCENARIOS.map(() => ({response: "", notes: ""}));
+
+    const savedReviewer = STORAGE.load('reviewer');
+    if (savedReviewer) { reviewerName = savedReviewer.name; reviewerEmail = savedReviewer.email; }
+
+    const savedCompleted = STORAGE.load('completed');
+    if (savedCompleted) completedQuizzes = savedCompleted;
+
+    const savedScenario = STORAGE.load('scenario_progress');
+    if (savedScenario?.responses?.length === SCENARIOS.length) {
+      responses = savedScenario.responses;
+      current = savedScenario.current ?? 0;
+    }
+
+    const savedWriter = STORAGE.load('writer_progress');
+    if (savedWriter?.responses?.length === SCENARIOS.length) {
+      writerResponses = savedWriter.responses;
+      writerCurrent = savedWriter.current ?? 0;
+    }
+
+    const savedJudge = STORAGE.load('judge_progress');
+    if (savedJudge?.responses?.length === CONVERSATIONS.length) {
+      judgeResponses = savedJudge.responses;
+      judgeCurrent = savedJudge.current ?? 0;
+    }
+
     document.getElementById("view-loading").style.display = "none";
     document.getElementById("view-home").style.display = "block";
+    renderHomeCards();
   } catch (e) {
     document.getElementById("view-loading").textContent = "Failed to load scenarios — is the server running? Please refresh.";
   }
@@ -468,7 +516,7 @@ const EVAL_META = {
   },
   test: {
     title: "Test submission",
-    desc: "This runs through a single scenario and submits to verify the email pipeline is working. The subject line will be prefixed with [TEST].",
+    desc: "This runs through 3 scenarios and submits to verify the email pipeline is working. The subject line will be prefixed with [TEST].",
   },
 };
 
@@ -476,6 +524,8 @@ function pickEvaluation(type) {
   evaluationType = type;
   document.getElementById("login-title").textContent = EVAL_META[type].title;
   document.getElementById("login-desc").textContent = EVAL_META[type].desc;
+  document.getElementById("reviewer-name").value = reviewerName;
+  document.getElementById("reviewer-email").value = reviewerEmail;
   show("view-login");
 }
 
@@ -484,19 +534,31 @@ function startEvaluation() {
   reviewerEmail = document.getElementById("reviewer-email").value.trim();
   if (!reviewerName) { alert("Please enter your name to continue."); return; }
   if (!reviewerEmail) { alert("Please enter your email to continue."); return; }
+  STORAGE.save('reviewer', { name: reviewerName, email: reviewerEmail });
   if (evaluationType === "scenario" || evaluationType === "test") {
-    activeScenarios = evaluationType === "test" ? SCENARIOS.slice(0, 1) : SCENARIOS;
-    responses = activeScenarios.map(() => ({realism:null, welfare_stake:null, human_sounding:null, domain_accuracy:null, notes:""}));
-    current = 0;
+    activeScenarios = evaluationType === "test" ? SCENARIOS.slice(0, 3) : SCENARIOS;
+    if (evaluationType === "test" || !STORAGE.load('scenario_progress')) {
+      responses = activeScenarios.map(() => ({realism:null, welfare_stake:null, human_sounding:null, domain_accuracy:null, notes:""}));
+      current = 0;
+    }
     show("view-form");
     renderScenario();
   }
-  if (evaluationType === "judge")  { judgeCurrent = 0; show("view-judge-form"); renderConversation(); }
-  if (evaluationType === "writer") { writerCurrent = 0; show("view-writer-form"); renderWriterScenario(); }
+  if (evaluationType === "judge") {
+    if (!STORAGE.load('judge_progress')) judgeCurrent = 0;
+    show("view-judge-form");
+    renderConversation();
+  }
+  if (evaluationType === "writer") {
+    if (!STORAGE.load('writer_progress')) writerCurrent = 0;
+    show("view-writer-form");
+    renderWriterScenario();
+  }
 }
 
 // ─── Scenario Review ──────────────────────────────────────────────────────────
 function renderScenario() {
+  window.scrollTo(0, 0);
   const s = activeScenarios[current];
   const r = responses[current];
   const pct = Math.round((current + 1) / activeScenarios.length * 100);
@@ -523,6 +585,7 @@ function renderScenario() {
   document.getElementById("q-notes").oninput = e => { responses[current].notes = e.target.value; };
   document.getElementById("btn-prev").disabled = current === 0;
   document.getElementById("btn-next").textContent = current === activeScenarios.length - 1 ? "Review & submit →" : "Next →";
+  document.getElementById("btn-back-to-review").style.display = editingFromReview ? "" : "none";
 
   const answered = ["realism","welfare_stake","human_sounding","domain_accuracy"].filter(k => r[k] !== null).length;
   document.getElementById("nav-info").textContent = answered === 4 ? "✓ all questions answered" : answered > 0 ? `${answered}/4 answered` : "";
@@ -535,17 +598,32 @@ function saveRadio(key, el) {
   el.closest(".radio-label").classList.add("selected");
   const r = responses[current];
   const answered = ["realism","welfare_stake","human_sounding","domain_accuracy"].filter(k => r[k] !== null).length;
-  document.getElementById("nav-info").textContent = answered === 4 ? "✓ all questions answered" : `${answered}/4 answered`;
+  const navInfo = document.getElementById("nav-info");
+  navInfo.style.color = "";
+  navInfo.textContent = answered === 4 ? "✓ all questions answered" : `${answered}/4 answered`;
+  saveProgress('scenario');
 }
 
 function navigate(dir) {
   responses[current].notes = document.getElementById("q-notes").value;
+  if (dir === 1) {
+    const r = responses[current];
+    const missing = ["realism","welfare_stake","human_sounding","domain_accuracy"].filter(k => r[k] === null).length;
+    if (missing > 0) {
+      const el = document.getElementById("nav-info");
+      el.textContent = `Please answer all ${missing} remaining question${missing > 1 ? 's' : ''} to continue`;
+      el.style.color = "var(--red-text)";
+      return;
+    }
+  }
+  saveProgress('scenario');
   if (dir === 1 && current === activeScenarios.length - 1) { showReview(); return; }
   current = Math.max(0, Math.min(activeScenarios.length - 1, current + dir));
   renderScenario();
 }
 
 function showReview() {
+  editingFromReview = false;
   const completed = responses.filter(r =>
     r.realism !== null && r.welfare_stake !== null && r.human_sounding !== null && r.domain_accuracy !== null
   ).length;
@@ -566,16 +644,18 @@ function showReview() {
 
   document.getElementById("review-list").innerHTML = responses.map((r, i) => {
     const s = activeScenarios[i];
-    return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-family:system-ui,sans-serif;font-size:13px;">
-      <span style="min-width:24px;color:var(--hint);font-weight:500;">${s.id}</span>
-      <span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.question}">${s.question.slice(0,72)}…</span>
-      <span style="display:flex;gap:6px;white-space:nowrap;">
-        <span style="color:${scoreColor(r.realism)}">R:${scoreLabel(r.realism)}</span>
-        <span style="color:${scoreColor(r.welfare_stake)}">W:${scoreLabel(r.welfare_stake)}</span>
-        <span style="color:${scoreColor(r.human_sounding)}">H:${scoreLabel(r.human_sounding)}</span>
-        <span style="color:${scoreColor(r.domain_accuracy)}">A:${scoreLabel(r.domain_accuracy)}</span>
-      </span>
-      <button style="font-size:12px;padding:3px 8px;border-radius:4px;" onclick="goToScenario(${i})">edit</button>
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border);font-family:system-ui,sans-serif;font-size:13px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+        <span style="min-width:24px;color:var(--hint);font-weight:500;">${s.id}</span>
+        <span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.question}">${s.question.slice(0,72)}…</span>
+        <button onclick="goToScenario(${i})" style="font-size:12px;padding:2px 8px;cursor:pointer;flex-shrink:0;">Edit</button>
+      </div>
+      <div style="display:flex;gap:12px;padding-left:36px;flex-wrap:wrap;">
+        <span style="color:${scoreColor(r.realism)}">Realism: ${scoreLabel(r.realism)}</span>
+        <span style="color:${scoreColor(r.welfare_stake)}">Welfare stake: ${scoreLabel(r.welfare_stake)}</span>
+        <span style="color:${scoreColor(r.human_sounding)}">Human-sounding: ${scoreLabel(r.human_sounding)}</span>
+        <span style="color:${scoreColor(r.domain_accuracy)}">Domain accuracy: ${scoreLabel(r.domain_accuracy)}</span>
+      </div>
     </div>`;
   }).join("");
 
@@ -583,9 +663,16 @@ function showReview() {
 }
 
 function goToScenario(idx) {
+  editingFromReview = true;
   current = idx;
   show("view-form");
   renderScenario();
+}
+
+function returnToReview() {
+  responses[current].notes = document.getElementById("q-notes").value;
+  saveProgress('scenario');
+  showReview();
 }
 
 function goBack() {
@@ -626,6 +713,11 @@ async function submitReview() {
       const detail = err.detail;
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail) || "Server error");
     }
+    if (evaluationType !== 'test') {
+      completedQuizzes.scenario = true;
+      STORAGE.save('completed', completedQuizzes);
+    }
+    STORAGE.clear('scenario_progress');
     show("view-success");
   } catch (e) {
     errBanner.textContent = `Submission failed: ${e.message}. Please try again or contact the research team.`;
@@ -637,6 +729,7 @@ async function submitReview() {
 
 // ─── Human Judge ──────────────────────────────────────────────────────────────
 function renderConversation() {
+  window.scrollTo(0, 0);
   const c = CONVERSATIONS[judgeCurrent];
   const r = judgeResponses[judgeCurrent];
   const pct = Math.round((judgeCurrent + 1) / CONVERSATIONS.length * 100);
@@ -666,7 +759,10 @@ function renderConversation() {
     const val = parseFloat(e.target.value);
     judgeResponses[judgeCurrent].score = val;
     display.textContent = val.toFixed(2);
-    document.getElementById("judge-nav-info").textContent = "✓ score saved";
+    const judgeNavInfo = document.getElementById("judge-nav-info");
+    judgeNavInfo.style.color = "";
+    judgeNavInfo.textContent = "✓ score saved";
+    saveProgress('judge');
   };
 
   document.getElementById("judge-notes").value = r.notes;
@@ -679,6 +775,13 @@ function renderConversation() {
 
 function navigateJudge(dir) {
   judgeResponses[judgeCurrent].notes = document.getElementById("judge-notes").value;
+  if (dir === 1 && judgeResponses[judgeCurrent].score === null) {
+    const el = document.getElementById("judge-nav-info");
+    el.textContent = "Please give a score before continuing";
+    el.style.color = "var(--red-text)";
+    return;
+  }
+  saveProgress('judge');
   if (dir === 1 && judgeCurrent === CONVERSATIONS.length - 1) { showJudgeReview(); return; }
   judgeCurrent = Math.max(0, Math.min(CONVERSATIONS.length - 1, judgeCurrent + dir));
   renderConversation();
@@ -749,6 +852,9 @@ async function submitJudge() {
       const detail = err.detail;
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail) || "Server error");
     }
+    completedQuizzes.judge = true;
+    STORAGE.save('completed', completedQuizzes);
+    STORAGE.clear('judge_progress');
     show("view-success");
   } catch (e) {
     errBanner.textContent = `Submission failed: ${e.message}. Please try again or contact the research team.`;
@@ -760,6 +866,7 @@ async function submitJudge() {
 
 // ─── Human Writer ─────────────────────────────────────────────────────────────
 function renderWriterScenario() {
+  window.scrollTo(0, 0);
   const s = SCENARIOS[writerCurrent];
   const r = writerResponses[writerCurrent];
   const pct = Math.round((writerCurrent + 1) / SCENARIOS.length * 100);
@@ -772,7 +879,10 @@ function renderWriterScenario() {
   document.getElementById("writer-response").value = r.response;
   document.getElementById("writer-response").oninput = e => {
     writerResponses[writerCurrent].response = e.target.value;
-    document.getElementById("writer-nav-info").textContent = e.target.value.trim() ? "✓ response written" : "";
+    const writerNavInfo = document.getElementById("writer-nav-info");
+    writerNavInfo.style.color = "";
+    writerNavInfo.textContent = e.target.value.trim() ? "✓ response written" : "";
+    saveProgress('writer');
   };
 
   document.getElementById("writer-notes").value = r.notes;
@@ -786,6 +896,13 @@ function renderWriterScenario() {
 function navigateWriter(dir) {
   writerResponses[writerCurrent].response = document.getElementById("writer-response").value;
   writerResponses[writerCurrent].notes = document.getElementById("writer-notes").value;
+  if (dir === 1 && !writerResponses[writerCurrent].response.trim()) {
+    const el = document.getElementById("writer-nav-info");
+    el.textContent = "Please write a response before continuing";
+    el.style.color = "var(--red-text)";
+    return;
+  }
+  saveProgress('writer');
   if (dir === 1 && writerCurrent === SCENARIOS.length - 1) { showWriterReview(); return; }
   writerCurrent = Math.max(0, Math.min(SCENARIOS.length - 1, writerCurrent + dir));
   renderWriterScenario();
@@ -855,6 +972,9 @@ async function submitWriter() {
       const detail = err.detail;
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail) || "Server error");
     }
+    completedQuizzes.writer = true;
+    STORAGE.save('completed', completedQuizzes);
+    STORAGE.clear('writer_progress');
     show("view-success");
   } catch (e) {
     errBanner.textContent = `Submission failed: ${e.message}. Please try again or contact the research team.`;
@@ -862,6 +982,27 @@ async function submitWriter() {
     btn.disabled = false;
     btn.textContent = "Submit →";
   }
+}
+
+function renderHomeCards() {
+  const cards = document.querySelectorAll('.eval-card:not(.eval-card-test)');
+  ['scenario', 'judge', 'writer'].forEach((type, i) => {
+    const card = cards[i];
+    if (!card) return;
+    const titleEl = card.querySelector('.eval-card-title');
+    const chipsEl = card.querySelector('.eval-card-chips');
+    if (completedQuizzes[type]) {
+      titleEl.style.textDecoration = 'line-through';
+      titleEl.style.opacity = '0.5';
+      if (!card.querySelector('.chip-submitted')) {
+        chipsEl.insertAdjacentHTML('beforeend', '<span class="eval-chip chip-submitted" style="background:#d4edda;color:#276749;">✓ Submitted</span>');
+      }
+    } else {
+      titleEl.style.textDecoration = '';
+      titleEl.style.opacity = '';
+      card.querySelector('.chip-submitted')?.remove();
+    }
+  });
 }
 
 initApp();

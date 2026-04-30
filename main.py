@@ -8,10 +8,27 @@ import ast
 import os
 from datetime import datetime
 
+import io
+import base64
+
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Mail, Attachment
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def make_csv_attachment(fieldnames: list, rows: list, filename: str) -> Attachment:
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    encoded = base64.b64encode(buf.getvalue().encode()).decode()
+    return Attachment(
+        file_content=encoded,
+        file_name=filename,
+        file_type="text/csv",
+        disposition="attachment",
+    )
 
 app = FastAPI(title="MANTA Review API")
 
@@ -98,7 +115,7 @@ class ReviewSubmission(BaseModel):
     is_test: bool = False
 
 
-def _send_via_sendgrid(*, subject: str, html_body: str, to: str, cc: Optional[str] = None):
+def _send_via_sendgrid(*, subject: str, html_body: str, to: str, cc: Optional[str] = None, attachment: Optional[Attachment] = None):
     api_key = os.environ.get("SENDGRID_API_KEY", "")
     from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
     if not api_key or not from_email:
@@ -108,6 +125,8 @@ def _send_via_sendgrid(*, subject: str, html_body: str, to: str, cc: Optional[st
     if cc:
         to_list.append(cc)
     message = Mail(from_email=from_email, to_emails=to_list, subject=subject, html_content=html_body)
+    if attachment:
+        message.add_attachment(attachment)
     sg = SendGridAPIClient(api_key)
     try:
         response = sg.send(message)
@@ -157,10 +176,30 @@ def send_email(submission: ReviewSubmission):
     </div>
     """
 
+    csv_rows = []
+    for r in submission.responses:
+        scenario = next((s for s in SCENARIOS if s["id"] == r.scenario_id), None)
+        csv_rows.append({
+            "id": r.scenario_id,
+            "question": scenario["question"] if scenario else "",
+            "realism": r.realism if r.realism is not None else "",
+            "welfare_stake": r.welfare_stake if r.welfare_stake is not None else "",
+            "human_sounding": r.human_sounding if r.human_sounding is not None else "",
+            "domain_accuracy": r.domain_accuracy if r.domain_accuracy is not None else "",
+            "notes": r.notes,
+            "reviewer_name": submission.reviewer_name,
+            "submitted_at": submission.submitted_at,
+        })
+    attachment = make_csv_attachment(
+        ["id","question","realism","welfare_stake","human_sounding","domain_accuracy","notes","reviewer_name","submitted_at"],
+        csv_rows,
+        f"manta_scenario_{submission.reviewer_name.replace(' ','_')}.csv",
+    )
+
     prefix = "[TEST] " if submission.is_test else ""
     subject = f"{prefix}MANTA Review: {submission.reviewer_name} — {len(submission.responses)} scenarios"
     cc = submission.reviewer_email.strip() if submission.reviewer_email and submission.reviewer_email.strip() else None
-    _send_via_sendgrid(subject=subject, html_body=html_body, to=RECIPIENT_EMAIL, cc=cc)
+    _send_via_sendgrid(subject=subject, html_body=html_body, to=RECIPIENT_EMAIL, cc=cc, attachment=attachment)
 
 
 @app.get("/stylesheet.css")
@@ -243,6 +282,22 @@ def submit_judge(submission: JudgeSubmission):
     </div>
     """
 
+    csv_rows = [
+        {
+            "conversation_id": r.conversation_id,
+            "score": r.score if r.score is not None else "",
+            "notes": r.notes,
+            "reviewer_name": submission.reviewer_name,
+            "submitted_at": submission.submitted_at,
+        }
+        for r in submission.responses
+    ]
+    judge_attachment = make_csv_attachment(
+        ["conversation_id","score","notes","reviewer_name","submitted_at"],
+        csv_rows,
+        f"manta_judge_{submission.reviewer_name.replace(' ','_')}.csv",
+    )
+
     try:
         cc = submission.reviewer_email.strip() if submission.reviewer_email and submission.reviewer_email.strip() else None
         _send_via_sendgrid(
@@ -250,6 +305,7 @@ def submit_judge(submission: JudgeSubmission):
             html_body=html_body,
             to=RECIPIENT_EMAIL,
             cc=cc,
+            attachment=judge_attachment,
         )
     except Exception as e:
         print(f"Email error: {e}")
@@ -308,6 +364,23 @@ def submit_writer(submission: WriterSubmission):
     </div>
     """
 
+    csv_rows = []
+    for r in submission.responses:
+        scenario = next((s for s in SCENARIOS if s["id"] == r.scenario_id), None)
+        csv_rows.append({
+            "id": r.scenario_id,
+            "question": scenario["question"] if scenario else "",
+            "response": r.response,
+            "notes": r.notes,
+            "reviewer_name": submission.reviewer_name,
+            "submitted_at": submission.submitted_at,
+        })
+    writer_attachment = make_csv_attachment(
+        ["id","question","response","notes","reviewer_name","submitted_at"],
+        csv_rows,
+        f"manta_writer_{submission.reviewer_name.replace(' ','_')}.csv",
+    )
+
     try:
         cc = submission.reviewer_email.strip() if submission.reviewer_email and submission.reviewer_email.strip() else None
         _send_via_sendgrid(
@@ -315,6 +388,7 @@ def submit_writer(submission: WriterSubmission):
             html_body=html_body,
             to=RECIPIENT_EMAIL,
             cc=cc,
+            attachment=writer_attachment,
         )
     except Exception as e:
         print(f"Email error: {e}")
