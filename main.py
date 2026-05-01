@@ -7,6 +7,9 @@ import csv
 import ast
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 import io
 import base64
@@ -173,6 +176,7 @@ class ReviewSubmission(BaseModel):
 def _send_via_sendgrid(*, subject: str, html_body: str, to: str, cc: Optional[str] = None, attachment: Optional[Attachment] = None):
     api_key = os.environ.get("SENDGRID_API_KEY", "")
     from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
+    print(f"DEBUG from_email={from_email!r} key_prefix={api_key[:12]!r}")
     if not api_key or not from_email:
         print("WARNING: SENDGRID_API_KEY or SENDGRID_FROM_EMAIL not set. Email not sent.")
         return

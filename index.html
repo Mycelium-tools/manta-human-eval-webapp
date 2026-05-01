@@ -9,8 +9,9 @@
 <body>
 <div class="shell">
 
-  <div class="header">
+  <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
     <h1>MANTA scenario review</h1>
+    <button id="header-home-btn" onclick="goHomeWithConfirm('scenario')" style="display:none;color:var(--muted);font-size:13px;">⌂ Home</button>
   </div>
 
   <!-- LOADING STATE -->
@@ -25,6 +26,7 @@
     <div class="home-section">
       <div class="home-section-label">What is MANTA</div>
       <p style="font-size:15px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:14px;line-height:1.65;">MANTA is a benchmark that tests <em style="color:var(--text);">value stability</em> in AI models — specifically, whether a model maintains animal welfare considerations when faced with sustained adversarial pressure across a multi-turn conversation.</p>
+      <p style="font-size:15px;color:var(--accent);font-family:system-ui,sans-serif;margin-bottom:14px;line-height:1.65;font-weight:500;">The deadline to complete this scenario review is <strong>May 4th @ 12PM EST</strong> - but the earlier the better!</p>
 
       <div style="margin-top:24px;">
         <div class="home-section-label" style="margin-bottom:8px;">Scenarios</div>
@@ -76,12 +78,12 @@
     <!-- Section 2: About this review -->
     <div class="home-section">
       <div class="home-section-label">About this review</div>
-      <p style="font-size:15px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:20px;line-height:1.65;">You can evaluate MANTA benchmark scenarios in multiple ways. If you can, please feel free to do all of them! However, we've left time estimates for each evaluation to help you plan your time.</p>
+      <p style="font-size:15px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:20px;line-height:1.65;">You can evaluate MANTA benchmark scenarios in the following ways:</p>
       <div class="eval-cards">
         <div class="eval-card" onclick="pickEvaluation('scenario')">
           <div class="eval-card-header">
             <div class="eval-card-title">Scenario Review</div>
-            <div class="eval-card-time">~30 min</div>
+            <div class="eval-card-time">~35 min</div>
           </div>
           <div class="eval-card-desc">Rate 40 benchmark scenarios on realism, welfare stake, human-soundingness, and domain accuracy.</div>
           <div class="eval-card-chips">
@@ -115,19 +117,16 @@
           </div>
         </div>
         -->
-        <!-- Test submission card hidden
         <div class="eval-card eval-card-test" onclick="pickEvaluation('test')">
           <div class="eval-card-header">
             <div class="eval-card-title">Test submission</div>
             <div class="eval-card-time">~1 min</div>
           </div>
-          <div class="eval-card-desc">Run through 3 scenarios and submit to verify the email pipeline is working end-to-end.</div>
+          <div class="eval-card-desc">For developer testing only! Not for public evaluation.</div>
           <div class="eval-card-chips">
-            <span class="eval-chip">3 scenarios</span>
-            <span class="eval-chip">Sends test email</span>
+            <span class="eval-chip">1 scenario</span>
           </div>
         </div>
-        -->
       </div>
     </div>
   </div>
@@ -219,7 +218,6 @@
     <div class="nav">
       <span class="nav-info" id="nav-info"></span>
       <div class="btn-row">
-        <button onclick="goHomeWithConfirm('scenario')" style="color:var(--muted);">⌂ Home</button>
         <button id="btn-prev" onclick="navigate(-1)">← Back</button>
         <button id="btn-back-to-review" style="display:none;" onclick="returnToReview()">↩ Back to Review</button>
         <button class="primary" id="btn-next" onclick="navigate(1)">Next →</button>
@@ -234,9 +232,13 @@
     <div class="stats-row" id="stats-row"></div>
     <div id="review-list" style="margin-bottom:28px;"></div>
     <div class="error-banner" id="error-banner"></div>
-    <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:12px;">Submitting will send a copy of your results to you and the research team. If you don't see the email, check your spam folder.</p>
-    <div class="btn-row">
+    <h2 style="font-size:20px;font-weight:normal;margin-bottom:12px;">Submit your answers!</h2>
+    <div class="btn-row" style="margin-bottom:20px;">
       <button class="primary" id="btn-submit" onclick="submitReview()">Submit review →</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:8px;">Please download a copy of your results here — just in case the email doesn't arrive.</p>
+    <div class="btn-row">
+      <button onclick="downloadCSV('scenario')">↓ Download results</button>
     </div>
   </div>
 
@@ -295,10 +297,14 @@
     <div class="stats-row" id="judge-stats-row"></div>
     <div id="judge-review-list" style="margin-bottom:28px;"></div>
     <div class="error-banner" id="judge-error-banner"></div>
-    <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:12px;">Submitting will send a copy of your results to you and the research team. If you don't see the email, check your spam folder.</p>
-    <div class="btn-row">
+    <h2 style="font-size:20px;font-weight:normal;margin-bottom:12px;">Submit your answers!</h2>
+    <div class="btn-row" style="margin-bottom:20px;">
       <button onclick="goBackJudge()">← Go back</button>
       <button class="primary" id="judge-btn-submit" onclick="submitJudge()">Submit →</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:8px;">Please download a copy of your results here — just in case the email doesn't arrive.</p>
+    <div class="btn-row">
+      <button onclick="downloadCSV('judge')">↓ Download results</button>
     </div>
   </div>
 
@@ -357,10 +363,14 @@
     <div class="stats-row" id="writer-stats-row"></div>
     <div id="writer-review-list" style="margin-bottom:28px;"></div>
     <div class="error-banner" id="writer-error-banner"></div>
-    <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:12px;">Submitting will send a copy of your results to you and the research team. If you don't see the email, check your spam folder.</p>
-    <div class="btn-row">
+    <h2 style="font-size:20px;font-weight:normal;margin-bottom:12px;">Submit your answers!</h2>
+    <div class="btn-row" style="margin-bottom:20px;">
       <button onclick="goBackWriter()">← Go back</button>
       <button class="primary" id="writer-btn-submit" onclick="submitWriter()">Submit →</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);font-family:system-ui,sans-serif;margin-bottom:8px;">Please download a copy of your results here — just in case the email doesn't arrive.</p>
+    <div class="btn-row">
+      <button onclick="downloadCSV('writer')">↓ Download results</button>
     </div>
   </div>
 
@@ -377,6 +387,10 @@
   </div>
 
 </div>
+
+<footer style="position:fixed;bottom:0;left:0;right:0;padding:10px 0;border-top:1px solid var(--border);text-align:center;font-family:system-ui,sans-serif;font-size:13px;color:var(--hint);background:var(--bg);z-index:100;">
+  Questions or feedback? Reach out to <a href="mailto:allenlu0007@gmail.com" style="color:var(--muted);text-decoration:underline;">allenlu0007@gmail.com</a>
+</footer>
 
 <script>
 // ─── Scenario data ───────────────────────────────────────────────────────────
@@ -539,13 +553,14 @@ async function initApp() {
 function show(id) {
   const views = ["view-home","view-login","view-form","view-review","view-judge-form","view-judge-review","view-writer-form","view-writer-review","view-success"];
   views.forEach(v => document.getElementById(v).style.display = v === id ? "block" : "none");
+  document.getElementById("header-home-btn").style.display = id === "view-form" ? "inline-flex" : "none";
 }
 
 // ─── Homepage ─────────────────────────────────────────────────────────────────
 const EVAL_META = {
   scenario: {
     title: "Scenario Review",
-    desc: "You'll rate 40 benchmark scenarios on realism, welfare stake, human-soundingness, and domain accuracy. Estimated time: ~30 minutes.",
+    desc: "You'll rate 40 benchmark scenarios on realism, welfare stake, human-soundingness, and domain accuracy.<br><br>Estimated time: ~35 minutes.<br><br>You don't need to spend too much time on each question — each one should take less than a minute to answer.",
   },
   judge: {
     title: "Human Judge",
@@ -557,14 +572,14 @@ const EVAL_META = {
   },
   test: {
     title: "Test submission",
-    desc: "This runs through 3 scenarios and submits to verify the email pipeline is working. The subject line will be prefixed with [TEST].",
+    desc: "This runs through 1 scenario and submits to verify the email pipeline is working. The subject line will be prefixed with [TEST].",
   },
 };
 
 function pickEvaluation(type) {
   evaluationType = type;
   document.getElementById("login-title").textContent = EVAL_META[type].title;
-  document.getElementById("login-desc").textContent = EVAL_META[type].desc;
+  document.getElementById("login-desc").innerHTML = EVAL_META[type].desc;
   document.getElementById("reviewer-name").value = reviewerName;
   document.getElementById("reviewer-email").value = reviewerEmail;
   document.getElementById("login-judge-instructions").style.display = type === 'judge' ? 'block' : 'none';
@@ -578,7 +593,7 @@ function startEvaluation() {
   if (!reviewerEmail) { alert("Please enter your email to continue."); return; }
   STORAGE.save('reviewer', { name: reviewerName, email: reviewerEmail });
   if (evaluationType === "scenario" || evaluationType === "test") {
-    activeScenarios = evaluationType === "test" ? SCENARIOS.slice(0, 3) : SCENARIOS;
+    activeScenarios = evaluationType === "test" ? SCENARIOS.slice(0, 1) : SCENARIOS;
     if (evaluationType === "test" || !STORAGE.load('scenario_progress')) {
       responses = activeScenarios.map(() => ({realism:null, welfare_stake:null, human_sounding:null, domain_accuracy:null, notes:""}));
       current = 0;
@@ -666,6 +681,10 @@ function navigate(dir) {
 
 function showReview() {
   editingFromReview = false;
+  const btn = document.getElementById("btn-submit");
+  btn.disabled = false;
+  btn.textContent = "Submit review →";
+  document.getElementById("error-banner").style.display = "none";
   const completed = responses.filter(r =>
     r.realism !== null && r.welfare_stake !== null && r.human_sounding !== null && r.domain_accuracy !== null
   ).length;
@@ -867,6 +886,10 @@ function navigateJudge(dir) {
 }
 
 function showJudgeReview() {
+  const judgeBtn = document.getElementById("judge-btn-submit");
+  judgeBtn.disabled = false;
+  judgeBtn.textContent = "Submit →";
+  document.getElementById("judge-error-banner").style.display = "none";
   const scored = judgeResponses.filter(r => r.score !== null).length;
   const unscored = CONVERSATIONS.length - scored;
 
@@ -1015,6 +1038,10 @@ function navigateWriterConv(dir) {
 }
 
 function showWriterReview() {
+  const writerBtn = document.getElementById("writer-btn-submit");
+  writerBtn.disabled = false;
+  writerBtn.textContent = "Submit →";
+  document.getElementById("writer-error-banner").style.display = "none";
   const completed = writerConvResponses.filter(r => r.currentStep > 5).length;
   const incomplete = CONVERSATIONS.length - completed;
 
@@ -1151,6 +1178,44 @@ function renderHomeCards() {
       }
     }
   });
+}
+
+function downloadCSV(type) {
+  const now = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  const esc = v => { const s = String(v ?? ''); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const toCSV = (fields, rows) => [fields.join(','), ...rows.map(r => fields.map(f => esc(r[f])).join(','))].join('\n');
+
+  let csv, filename;
+  if (type === 'scenario') {
+    const fields = ['id','question','realism','welfare_stake','human_sounding','domain_accuracy','notes','reviewer_name','submitted_at'];
+    const rows = responses.map((r, i) => {
+      const s = activeScenarios[i];
+      return { id: s.id, question: s.question, realism: r.realism ?? '', welfare_stake: r.welfare_stake ?? '', human_sounding: r.human_sounding ?? '', domain_accuracy: r.domain_accuracy ?? '', notes: r.notes, reviewer_name: reviewerName, submitted_at: now };
+    });
+    csv = toCSV(fields, rows);
+    filename = `manta_scenario_${reviewerName.replace(/\s+/g,'_')}.csv`;
+  } else if (type === 'judge') {
+    const fields = ['conversation_id','score','notes','reviewer_name','submitted_at'];
+    const rows = judgeResponses.map((r, i) => ({ conversation_id: CONVERSATIONS[i].id, score: r.score ?? '', notes: r.notes, reviewer_name: reviewerName, submitted_at: now }));
+    csv = toCSV(fields, rows);
+    filename = `manta_judge_${reviewerName.replace(/\s+/g,'_')}.csv`;
+  } else if (type === 'writer') {
+    const fields = ['conversation_id','turn_num','response','notes','reviewer_name','submitted_at'];
+    const rows = [];
+    writerConvResponses.forEach((r, i) => {
+      Object.entries(r.submittedTurns).forEach(([tn, resp]) => {
+        rows.push({ conversation_id: CONVERSATIONS[i].id, turn_num: parseInt(tn), response: resp || '', notes: r.notes, reviewer_name: reviewerName, submitted_at: now });
+      });
+    });
+    csv = toCSV(fields, rows);
+    filename = `manta_writer_${reviewerName.replace(/\s+/g,'_')}.csv`;
+  }
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 initApp();
