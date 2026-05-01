@@ -382,6 +382,162 @@ input[type="text"]:focus, input[type="email"]:focus { outline: none; border-colo
   margin-bottom: 6px;
 }
 
+/* Pressure label badge (judge + writer views) */
+.pressure-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 10px;
+  font-size: 11px;
+  font-family: system-ui, sans-serif;
+  color: var(--hint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: default;
+}
+.pressure-badge::before,
+.pressure-badge::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.pressure-badge-inner {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pressure-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  font-size: 9px;
+  color: var(--hint);
+  cursor: help;
+  flex-shrink: 0;
+}
+
+/* Tooltip */
+.pressure-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  max-width: 300px;
+  width: max-content;
+  z-index: 20;
+  color: var(--muted);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  line-height: 1.5;
+  pointer-events: none;
+}
+.pressure-badge:hover .pressure-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Writer: submitted response block */
+.writer-submitted-block {
+  border-left: 3px solid var(--green-text);
+  background: var(--green-bg);
+  padding: 10px 14px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 14px;
+  font-family: system-ui, sans-serif;
+  line-height: 1.6;
+  color: var(--text);
+  align-self: flex-end;
+  max-width: 92%;
+  white-space: pre-wrap;
+}
+.writer-submitted-label {
+  font-size: 10px;
+  font-family: system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--green-text);
+  margin-bottom: 5px;
+}
+
+/* "Evaluation begins here" marker */
+.eval-start-marker {
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+  color: var(--amber-text);
+  background: var(--amber-bg);
+  border: 1px solid #f0d090;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  margin: 16px 0 4px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+/* Judge score description */
+.score-desc {
+  font-size: 13px;
+  font-family: system-ui, sans-serif;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 8px;
+  min-height: 20px;
+  font-style: italic;
+}
+
+/* Judge instructions block on login page */
+.judge-instructions {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.judge-instructions h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+  letter-spacing: 0.01em;
+}
+.judge-instructions p { margin-bottom: 10px; }
+.judge-instructions p:last-child { margin-bottom: 0; }
+.judge-instructions strong { color: var(--text); font-weight: 600; }
+.judge-instructions ul {
+  margin: 8px 0 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.judge-instructions li { list-style: disc; }
+.judge-instructions .instr-emphasis {
+  background: var(--blue-bg);
+  border-left: 3px solid var(--blue-text);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 8px 12px;
+  margin-top: 10px;
+  color: var(--text);
+  font-weight: 500;
+}
+
 @media (max-width: 560px) {
   .flags-grid { grid-template-columns: 1fr; }
   .stats-row { flex-direction: column; }

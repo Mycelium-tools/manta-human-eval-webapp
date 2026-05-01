@@ -46,6 +46,9 @@ RECIPIENT_EMAIL = "Allenlu0007@gmail.com"
 # SENDGRID_FROM_EMAIL — verified sender address (e.g. your@domain.com)
 
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manta_questions.csv")
+CONV_CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "judge_haiku_convo.csv")
+
+CONV_LIMIT = 25
 
 
 def load_scenarios_from_csv():
@@ -68,11 +71,58 @@ def load_scenarios_from_csv():
     return scenarios
 
 
+def load_conversations_from_csv():
+    from collections import OrderedDict
+    conv_rows = OrderedDict()  # sample_id -> {turn_num -> {user, assistant}}
+    pressure_map = {}  # sample_id -> [pressure_type, ...]
+    order = []  # insertion order of sample_ids
+
+    try:
+        with open(CONV_CSV_PATH, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                sid = row["sample_id"]
+                turn_num = int(row["turn_num"])
+                role = row["role"]
+                content = row["content"]
+
+                if sid not in conv_rows:
+                    if len(order) >= CONV_LIMIT:
+                        continue
+                    conv_rows[sid] = {}
+                    order.append(sid)
+                    raw_pt = row.get("pressure_types", "")
+                    pressure_map[sid] = [p.strip() for p in raw_pt.split(",") if p.strip()]
+                elif sid not in order:
+                    continue
+
+                if turn_num not in conv_rows[sid]:
+                    conv_rows[sid][turn_num] = {"user": "", "assistant": ""}
+                conv_rows[sid][turn_num][role] = content
+
+    except FileNotFoundError:
+        print(f"WARNING: {CONV_CSV_PATH} not found.")
+
+    conversations = []
+    for sid in order:
+        turns = [
+            {"turn_num": tn, "user": data["user"], "assistant": data["assistant"]}
+            for tn, data in sorted(conv_rows[sid].items())
+        ]
+        conversations.append({
+            "id": sid,
+            "pressure_types": pressure_map[sid],
+            "turns": turns,
+        })
+    return conversations
+
+
 SCENARIOS = load_scenarios_from_csv()
+CONVERSATIONS_DATA = load_conversations_from_csv()
 
 
 class JudgeResponse(BaseModel):
-    conversation_id: int
+    conversation_id: str
     score: Optional[float] = None  # 0.0–1.0
     notes: str = ""
 
@@ -84,16 +134,21 @@ class JudgeSubmission(BaseModel):
     submitted_at: str = ""
 
 
-class WriterResponse(BaseModel):
-    scenario_id: int
+class WriterTurnResponse(BaseModel):
+    turn_num: int
     response: str = ""
+
+
+class WriterConvResponse(BaseModel):
+    conversation_id: str
+    turn_responses: list[WriterTurnResponse]
     notes: str = ""
 
 
-class WriterSubmission(BaseModel):
+class WriterConvSubmission(BaseModel):
     reviewer_name: str
     reviewer_email: Optional[str] = ""
-    responses: list[WriterResponse]
+    responses: list[WriterConvResponse]
     submitted_at: str = ""
 
 
@@ -315,7 +370,7 @@ def submit_judge(submission: JudgeSubmission):
 
 
 @app.post("/submit/writer")
-def submit_writer(submission: WriterSubmission):
+def submit_writer(submission: WriterConvSubmission):
     if not submission.reviewer_name.strip():
         raise HTTPException(status_code=400, detail="Reviewer name is required")
     if not submission.responses:
@@ -323,18 +378,19 @@ def submit_writer(submission: WriterSubmission):
 
     submission.submitted_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    written = [r for r in submission.responses if r.response.strip()]
-    skipped = len(submission.responses) - len(written)
+    completed = [r for r in submission.responses if r.turn_responses]
+    total_turns = sum(len(r.turn_responses) for r in submission.responses)
 
     html_rows = ""
     for r in submission.responses:
-        scenario = next((s for s in SCENARIOS if s["id"] == r.scenario_id), None)
-        q_preview = scenario["question"][:80] + "…" if scenario else f"Scenario {r.scenario_id}"
-        resp_preview = r.response[:200] + ("…" if len(r.response) > 200 else "") if r.response else "—"
-        html_rows += f"""
+        conv = next((c for c in CONVERSATIONS_DATA if c["id"] == r.conversation_id), None)
+        first_user = conv["turns"][0]["user"][:80] + "…" if conv else f"Conv {r.conversation_id}"
+        for tr in r.turn_responses:
+            resp_preview = tr.response[:200] + ("…" if len(tr.response) > 200 else "")
+            html_rows += f"""
         <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:500;color:#333;vertical-align:top;width:32px;">{r.scenario_id}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#555;vertical-align:top;font-size:13px;">{q_preview}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:500;color:#333;vertical-align:top;width:32px;">{r.conversation_id}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#555;vertical-align:top;font-size:13px;">Turn {tr.turn_num}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#333;vertical-align:top;font-size:13px;">{resp_preview}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#888;vertical-align:top;font-size:13px;">{r.notes if r.notes else '—'}</td>
         </tr>"""
@@ -345,16 +401,19 @@ def submit_writer(submission: WriterSubmission):
       <p style="color:#666;font-size:14px;margin:0 0 24px;">Submitted by <strong>{submission.reviewer_name}</strong> on {submission.submitted_at}</p>
       <div style="display:flex;gap:16px;margin-bottom:28px;">
         <div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;">
-          <div style="font-size:26px;font-weight:500;color:#2d6a4f;">{len(written)}</div>
-          <div style="font-size:12px;color:#666;margin-top:2px;">written</div>
+          <div style="font-size:26px;font-weight:500;color:#2d6a4f;">{len(completed)}</div>
+          <div style="font-size:12px;color:#666;margin-top:2px;">conversations</div>
         </div>
-        {f'<div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;"><div style="font-size:26px;font-weight:500;color:#888;">{skipped}</div><div style="font-size:12px;color:#666;margin-top:2px;">skipped</div></div>' if skipped else ''}
+        <div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;">
+          <div style="font-size:26px;font-weight:500;color:#185fa5;">{total_turns}</div>
+          <div style="font-size:12px;color:#666;margin-top:2px;">total turns written</div>
+        </div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
         <thead>
           <tr style="background:#f5f5f2;">
-            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">ID</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Scenario</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Conv ID</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Turn</th>
             <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Response</th>
             <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Notes</th>
           </tr>
@@ -366,17 +425,17 @@ def submit_writer(submission: WriterSubmission):
 
     csv_rows = []
     for r in submission.responses:
-        scenario = next((s for s in SCENARIOS if s["id"] == r.scenario_id), None)
-        csv_rows.append({
-            "id": r.scenario_id,
-            "question": scenario["question"] if scenario else "",
-            "response": r.response,
-            "notes": r.notes,
-            "reviewer_name": submission.reviewer_name,
-            "submitted_at": submission.submitted_at,
-        })
+        for tr in r.turn_responses:
+            csv_rows.append({
+                "conversation_id": r.conversation_id,
+                "turn_num": tr.turn_num,
+                "response": tr.response,
+                "notes": r.notes,
+                "reviewer_name": submission.reviewer_name,
+                "submitted_at": submission.submitted_at,
+            })
     writer_attachment = make_csv_attachment(
-        ["id","question","response","notes","reviewer_name","submitted_at"],
+        ["conversation_id","turn_num","response","notes","reviewer_name","submitted_at"],
         csv_rows,
         f"manta_writer_{submission.reviewer_name.replace(' ','_')}.csv",
     )
@@ -384,7 +443,7 @@ def submit_writer(submission: WriterSubmission):
     try:
         cc = submission.reviewer_email.strip() if submission.reviewer_email and submission.reviewer_email.strip() else None
         _send_via_sendgrid(
-            subject=f"MANTA Writer: {submission.reviewer_name} — {len(written)}/{len(submission.responses)} written",
+            subject=f"MANTA Writer: {submission.reviewer_name} — {len(completed)}/{len(submission.responses)} conversations, {total_turns} turns",
             html_body=html_body,
             to=RECIPIENT_EMAIL,
             cc=cc,
@@ -405,3 +464,8 @@ def get_questions():
 @app.get("/scenarios")
 def get_scenarios():
     return SCENARIOS
+
+
+@app.get("/conversations")
+def get_conversations():
+    return CONVERSATIONS_DATA
