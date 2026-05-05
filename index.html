@@ -93,14 +93,14 @@
           </div>
         </div>
         -->
-        <div class="eval-card" onclick="pickEvaluation('judge')">
+        <div class="eval-card" data-eval-type="judge" onclick="pickEvaluation('judge')">
           <div class="eval-card-header">
             <div class="eval-card-title">Human Judge Validation</div>
-            <div class="eval-card-time">~60 min</div>
+            <div class="eval-card-time">~2 hrs</div>
           </div>
           <div class="eval-card-desc">Read multi-turn AI conversations and rate the overall response quality on a 0–1 scale.</div>
           <div class="eval-card-chips">
-            <span class="eval-chip">25 Multi-turn conversations</span>
+            <span class="eval-chip">40 Multi-turn conversations</span>
             <span class="eval-chip">Slider score</span>
           </div>
         </div>
@@ -576,7 +576,7 @@ const EVAL_META = {
   },
   judge: {
     title: "Human Judge",
-    desc: "You'll read multi-turn AI conversations and give each one an overall quality score from 0% (poor) to 100% (excellent). Estimated time: ~60 minutes.",
+    desc: "You'll read multi-turn AI conversations and give each one an overall quality score from 0% (poor) to 100% (excellent). Estimated time: ~2 hours.",
   },
   writer: {
     title: "Human Writer",
@@ -619,7 +619,10 @@ function startEvaluation() {
   }
   if (evaluationType === "judge") {
     activeConversations = CONVERSATIONS;
-    if (!STORAGE.load('judge_progress')) judgeCurrent = 0;
+    if (!STORAGE.load('judge_progress')) {
+      judgeResponses = CONVERSATIONS.map(() => ({turnScores: {1:null,2:null,3:null,4:null,5:null}, currentTurn: 1, notes: ""}));
+      judgeCurrent = 0;
+    }
     show("view-judge-form");
     renderConversation();
   }
@@ -1278,7 +1281,9 @@ function goHomeWithConfirm(type) {
     saveProgress('scenario');
     editingFromReview = false;
   } else if (type === 'judge') {
-    judgeResponses[judgeCurrent].notes = document.getElementById("judge-notes").value;
+    if (document.getElementById("judge-notes-section").style.display !== "none") {
+      judgeResponses[judgeCurrent].notes = document.getElementById("judge-notes").value;
+    }
     saveProgress('judge');
   } else if (type === 'writer') {
     const wr = writerConvResponses[writerConvCurrent];
@@ -1292,7 +1297,6 @@ function goHomeWithConfirm(type) {
 }
 
 function renderHomeCards() {
-  const cards = document.querySelectorAll('.eval-card:not(.eval-card-test)');
   const progressMap = {
     scenario: {
       done: responses.filter(r => r.realism !== null && r.welfare_stake !== null && r.human_sounding !== null && r.domain_accuracy !== null).length,
@@ -1307,9 +1311,9 @@ function renderHomeCards() {
       total: CONVERSATIONS.length,
     },
   };
-  ['scenario', 'judge', 'writer'].forEach((type, i) => {
-    const card = cards[i];
-    if (!card) return;
+  document.querySelectorAll('.eval-card:not(.eval-card-test)').forEach(card => {
+    const type = card.dataset.evalType;
+    if (!type || !progressMap[type]) return;
     const titleEl = card.querySelector('.eval-card-title');
     const chipsEl = card.querySelector('.eval-card-chips');
     card.querySelector('.chip-submitted')?.remove();

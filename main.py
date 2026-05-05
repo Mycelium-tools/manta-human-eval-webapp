@@ -42,7 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-RECIPIENT_EMAIL = "Allenlu0007@gmail.com"
+RECIPIENT_EMAILS = ["Allenlu0007@gmail.com", "my.isabella.luong@gmail.com", "chen.joyee@gmail.com"]
 
 # --- Email config: set these as environment variables ---
 # SENDGRID_API_KEY  — your SendGrid API key
@@ -51,7 +51,7 @@ RECIPIENT_EMAIL = "Allenlu0007@gmail.com"
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manta_questions_1090.csv")
 CONV_CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manta_judge_conversations_opus_4.7_5.5.26 - manta_judge_conversations_updated.csv")
 
-CONV_LIMIT = 25
+CONV_LIMIT = 40
 
 
 def load_scenarios_from_csv():
@@ -174,14 +174,14 @@ class ReviewSubmission(BaseModel):
     is_test: bool = False
 
 
-def _send_via_sendgrid(*, subject: str, html_body: str, to: str, cc: Optional[str] = None, attachment: Optional[Attachment] = None):
+def _send_via_sendgrid(*, subject: str, html_body: str, to: list[str], cc: Optional[str] = None, attachment: Optional[Attachment] = None):
     api_key = os.environ.get("SENDGRID_API_KEY", "")
     from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
     print(f"DEBUG from_email={from_email!r} key_prefix={api_key[:12]!r}")
     if not api_key or not from_email:
         print("WARNING: SENDGRID_API_KEY or SENDGRID_FROM_EMAIL not set. Email not sent.")
         return
-    to_list = [to]
+    to_list = list(to)
     if cc:
         to_list.append(cc)
     message = Mail(from_email=from_email, to_emails=to_list, subject=subject, html_content=html_body)
@@ -259,7 +259,7 @@ def send_email(submission: ReviewSubmission):
     prefix = "[TEST] " if submission.is_test else ""
     subject = f"{prefix}MANTA Review: {submission.reviewer_name} — {len(submission.responses)} scenarios"
     cc = submission.reviewer_email.strip() if submission.reviewer_email and submission.reviewer_email.strip() else None
-    _send_via_sendgrid(subject=subject, html_body=html_body, to=RECIPIENT_EMAIL, cc=cc, attachment=attachment)
+    _send_via_sendgrid(subject=subject, html_body=html_body, to=RECIPIENT_EMAILS, cc=cc, attachment=attachment)
 
 
 @app.get("/stylesheet.css")
@@ -393,7 +393,7 @@ def submit_judge(submission: JudgeSubmission):
         _send_via_sendgrid(
             subject=f"{prefix}MANTA Judge: {submission.reviewer_name} — {fully_scored}/{len(submission.responses)} fully scored, avg {overall_avg:.2f}",
             html_body=html_body,
-            to=RECIPIENT_EMAIL,
+            to=RECIPIENT_EMAILS,
             cc=cc,
             attachment=judge_attachment,
         )
@@ -480,7 +480,7 @@ def submit_writer(submission: WriterConvSubmission):
         _send_via_sendgrid(
             subject=f"MANTA Writer: {submission.reviewer_name} — {len(completed)}/{len(submission.responses)} conversations, {total_turns} turns",
             html_body=html_body,
-            to=RECIPIENT_EMAIL,
+            to=RECIPIENT_EMAILS,
             cc=cc,
             attachment=writer_attachment,
         )
