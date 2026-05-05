@@ -48,8 +48,8 @@ RECIPIENT_EMAIL = "Allenlu0007@gmail.com"
 # SENDGRID_API_KEY  — your SendGrid API key
 # SENDGRID_FROM_EMAIL — verified sender address (e.g. your@domain.com)
 
-CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manta_questions.csv")
-CONV_CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "judge_haiku_convo.csv")
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manta_questions_1090.csv")
+CONV_CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manta_judge_conversations_opus_4.7_5.5.26 - manta_judge_conversations_updated.csv")
 
 CONV_LIMIT = 25
 
@@ -126,7 +126,7 @@ CONVERSATIONS_DATA = load_conversations_from_csv()
 
 class JudgeResponse(BaseModel):
     conversation_id: str
-    score: Optional[float] = None  # 0.0–1.0
+    turn_scores: dict[str, Optional[float]] = {}  # keys "1"–"5", values 0.0–1.0
     notes: str = ""
 
 
@@ -135,6 +135,7 @@ class JudgeSubmission(BaseModel):
     reviewer_email: Optional[str] = ""
     responses: list[JudgeResponse]
     submitted_at: str = ""
+    is_test: bool = False
 
 
 class WriterTurnResponse(BaseModel):
@@ -298,42 +299,66 @@ def submit_judge(submission: JudgeSubmission):
 
     submission.submitted_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    scored = [r for r in submission.responses if r.score is not None]
-    unscored = len(submission.responses) - len(scored)
-    avg_score = sum(r.score for r in scored) / len(scored) if scored else 0
+    def conv_avg(ts: dict) -> Optional[float]:
+        vals = [v for v in ts.values() if v is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    fully_scored = sum(1 for r in submission.responses if all(r.turn_scores.get(str(t)) is not None for t in range(1, 6)))
+    partially_scored = sum(1 for r in submission.responses if any(r.turn_scores.get(str(t)) is not None for t in range(1, 6)) and not all(r.turn_scores.get(str(t)) is not None for t in range(1, 6)))
+    all_scores = [v for r in submission.responses for v in r.turn_scores.values() if v is not None]
+    overall_avg = sum(all_scores) / len(all_scores) if all_scores else 0
+
+    def score_color(v):
+        if v is None: return "#888"
+        if v >= 0.7: return "#2d6a4f"
+        if v >= 0.4: return "#854f0b"
+        return "#a32d2d"
 
     html_rows = ""
     for r in submission.responses:
-        score_str = f"{r.score:.2f}" if r.score is not None else "—"
-        score_color = "#2d6a4f" if r.score is not None and r.score >= 0.7 else ("#854f0b" if r.score is not None and r.score >= 0.4 else "#a32d2d") if r.score is not None else "#888"
+        avg = conv_avg(r.turn_scores)
+        avg_str = f"{avg:.2f}" if avg is not None else "—"
+        turn_cells = "".join(
+            f'<td style="padding:8px 10px;border-bottom:1px solid #eee;color:{score_color(r.turn_scores.get(str(t)))};font-weight:500;font-size:13px;text-align:center;">{f"{r.turn_scores.get(str(t)):.1f}" if r.turn_scores.get(str(t)) is not None else "—"}</td>'
+            for t in range(1, 6)
+        )
         html_rows += f"""
         <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:500;color:#333;vertical-align:top;width:32px;">{r.conversation_id}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eee;color:{score_color};font-weight:500;vertical-align:top;font-size:16px;">{score_str}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#444;vertical-align:top;font-size:13px;">{r.notes if r.notes else '—'}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;font-weight:500;color:#333;vertical-align:top;">{r.conversation_id}</td>
+          {turn_cells}
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;color:{score_color(avg)};font-weight:500;font-size:13px;text-align:center;">{avg_str}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;color:#444;font-size:13px;">{r.notes if r.notes else '—'}</td>
         </tr>"""
 
+    unstarted = len(submission.responses) - fully_scored - partially_scored
+    stat_blocks = f"""
+        <div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;">
+          <div style="font-size:26px;font-weight:500;color:#2d6a4f;">{fully_scored}</div>
+          <div style="font-size:12px;color:#666;margin-top:2px;">fully scored</div>
+        </div>
+        {'<div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;"><div style="font-size:26px;font-weight:500;color:#854f0b;">' + str(partially_scored) + '</div><div style="font-size:12px;color:#666;margin-top:2px;">partial</div></div>' if partially_scored else ''}
+        {'<div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;"><div style="font-size:26px;font-weight:500;color:#888;">' + str(unstarted) + '</div><div style="font-size:12px;color:#666;margin-top:2px;">unstarted</div></div>' if unstarted else ''}
+        <div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;">
+          <div style="font-size:26px;font-weight:500;color:#185fa5;">{overall_avg:.2f}</div>
+          <div style="font-size:12px;color:#666;margin-top:2px;">overall avg</div>
+        </div>"""
+
     html_body = f"""
-    <div style="font-family:Georgia,serif;max-width:800px;margin:0 auto;padding:32px 24px;">
+    <div style="font-family:Georgia,serif;max-width:900px;margin:0 auto;padding:32px 24px;">
       <h1 style="font-size:22px;font-weight:normal;color:#111;margin:0 0 4px;">MANTA Human Judge</h1>
       <p style="color:#666;font-size:14px;margin:0 0 24px;">Submitted by <strong>{submission.reviewer_name}</strong> on {submission.submitted_at}</p>
-      <div style="display:flex;gap:16px;margin-bottom:28px;">
-        <div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;">
-          <div style="font-size:26px;font-weight:500;color:#2d6a4f;">{len(scored)}</div>
-          <div style="font-size:12px;color:#666;margin-top:2px;">scored</div>
-        </div>
-        {f'<div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;"><div style="font-size:26px;font-weight:500;color:#888;">{unscored}</div><div style="font-size:12px;color:#666;margin-top:2px;">unscored</div></div>' if unscored else ''}
-        <div style="background:#f5f5f2;border-radius:8px;padding:14px 18px;min-width:80px;text-align:center;">
-          <div style="font-size:26px;font-weight:500;color:#185fa5;">{avg_score:.2f}</div>
-          <div style="font-size:12px;color:#666;margin-top:2px;">avg score</div>
-        </div>
-      </div>
+      <div style="display:flex;gap:16px;margin-bottom:28px;">{stat_blocks}</div>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
         <thead>
           <tr style="background:#f5f5f2;">
-            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Conv ID</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Score (0–1)</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:500;color:#555;font-size:12px;">Notes</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:#555;font-size:12px;">Conv ID</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:#555;font-size:12px;">T1</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:#555;font-size:12px;">T2</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:#555;font-size:12px;">T3</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:#555;font-size:12px;">T4</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:#555;font-size:12px;">T5</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:#555;font-size:12px;">Avg</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:#555;font-size:12px;">Notes</th>
           </tr>
         </thead>
         <tbody>{html_rows}</tbody>
@@ -341,26 +366,32 @@ def submit_judge(submission: JudgeSubmission):
     </div>
     """
 
-    csv_rows = [
-        {
+    csv_rows = []
+    for r in submission.responses:
+        avg = conv_avg(r.turn_scores)
+        csv_rows.append({
             "conversation_id": r.conversation_id,
-            "score": r.score if r.score is not None else "",
+            "turn_1": r.turn_scores.get("1") if r.turn_scores.get("1") is not None else "",
+            "turn_2": r.turn_scores.get("2") if r.turn_scores.get("2") is not None else "",
+            "turn_3": r.turn_scores.get("3") if r.turn_scores.get("3") is not None else "",
+            "turn_4": r.turn_scores.get("4") if r.turn_scores.get("4") is not None else "",
+            "turn_5": r.turn_scores.get("5") if r.turn_scores.get("5") is not None else "",
+            "avg": f"{avg:.3f}" if avg is not None else "",
             "notes": r.notes,
             "reviewer_name": submission.reviewer_name,
             "submitted_at": submission.submitted_at,
-        }
-        for r in submission.responses
-    ]
+        })
     judge_attachment = make_csv_attachment(
-        ["conversation_id","score","notes","reviewer_name","submitted_at"],
+        ["conversation_id","turn_1","turn_2","turn_3","turn_4","turn_5","avg","notes","reviewer_name","submitted_at"],
         csv_rows,
         f"manta_judge_{submission.reviewer_name.replace(' ','_')}.csv",
     )
 
     try:
         cc = submission.reviewer_email.strip() if submission.reviewer_email and submission.reviewer_email.strip() else None
+        prefix = "[TEST] " if submission.is_test else ""
         _send_via_sendgrid(
-            subject=f"MANTA Judge: {submission.reviewer_name} — {len(scored)}/{len(submission.responses)} scored, avg {avg_score:.2f}",
+            subject=f"{prefix}MANTA Judge: {submission.reviewer_name} — {fully_scored}/{len(submission.responses)} fully scored, avg {overall_avg:.2f}",
             html_body=html_body,
             to=RECIPIENT_EMAIL,
             cc=cc,

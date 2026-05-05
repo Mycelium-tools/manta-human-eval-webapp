@@ -504,11 +504,11 @@ input[type="text"]:focus, input[type="email"]:focus { outline: none; border-colo
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  padding: 26px 28px;
   margin-bottom: 24px;
   font-family: system-ui, sans-serif;
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 14px;
+  line-height: 1.75;
   color: var(--muted);
 }
 .judge-instructions h3 {
@@ -541,4 +541,14 @@ input[type="text"]:focus, input[type="email"]:focus { outline: none; border-colo
 @media (max-width: 560px) {
   .flags-grid { grid-template-columns: 1fr; }
   .stats-row { flex-direction: column; }
+  .judge-instructions { padding: 20px 18px; }
 }
+
+/* Markdown content inside conversation turns */
+.turn .md-heading { font-weight: 600; margin: 10px 0 3px; font-size: 13.5px; line-height: 1.4; }
+.turn .md-p { margin: 3px 0; }
+.turn .md-spacer { height: 8px; }
+.turn .md-ul, .turn .md-ol { margin: 3px 0 4px 16px; padding: 0; }
+.turn .md-ul li, .turn .md-ol li { margin-bottom: 3px; }
+.turn strong { font-weight: 600; }
+.turn em { font-style: italic; }
