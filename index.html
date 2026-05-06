@@ -104,6 +104,17 @@
             <span class="eval-chip">Slider score</span>
           </div>
         </div>
+        <div class="eval-card" data-eval-type="judge-last9" onclick="pickEvaluation('judge-last9')">
+          <div class="eval-card-header">
+            <div class="eval-card-title">Human Judge Validation (Last 9)</div>
+            <div class="eval-card-time">~27 min</div>
+          </div>
+          <div class="eval-card-desc">Read the final 9 multi-turn AI conversations and rate the overall response quality on a 0–1 scale.</div>
+          <div class="eval-card-chips">
+            <span class="eval-chip">9 Multi-turn conversations</span>
+            <span class="eval-chip">Slider score</span>
+          </div>
+        </div>
         <!-- Human Writer card hidden
         <div class="eval-card" onclick="pickEvaluation('writer')">
           <div class="eval-card-header">
@@ -489,7 +500,7 @@ let judgeResponses = [];  // initialized in initApp after CONVERSATIONS loads
 let writerConvCurrent = 0;
 let writerConvResponses = [];  // initialized in initApp after CONVERSATIONS loads
 
-let completedQuizzes = { scenario: false, judge: false, writer: false };
+let completedQuizzes = { scenario: false, judge: false, writer: false, 'judge-last9': false };
 
 const STORAGE = {
   save(key, val) { try { localStorage.setItem('manta_' + key, JSON.stringify(val)); } catch {} },
@@ -501,7 +512,8 @@ function saveProgress(type) {
   if (type === 'scenario') {
     STORAGE.save('scenario_progress', { responses, current });
   } else if (type === 'judge') {
-    STORAGE.save('judge_progress', { responses: judgeResponses, current: judgeCurrent });
+    const judgeKey = evaluationType === 'judge-last9' ? 'judge_last9_progress' : 'judge_progress';
+    STORAGE.save(judgeKey, { responses: judgeResponses, current: judgeCurrent });
   } else if (type === 'writer') {
     STORAGE.save('writer_progress', { responses: writerConvResponses, current: writerConvCurrent });
   }
@@ -590,6 +602,10 @@ const EVAL_META = {
     title: "Test submission (Judge)",
     desc: "This runs through 1 conversation in the Human Judge quiz and submits to verify the email pipeline is working. The subject line will be prefixed with [TEST].",
   },
+  "judge-last9": {
+    title: "Human Judge (Last 9)",
+    desc: "You'll read the final 9 multi-turn AI conversations and give each one an overall quality score from 0% (poor) to 100% (excellent). Estimated time: ~27 minutes.",
+  },
 };
 
 function pickEvaluation(type) {
@@ -598,7 +614,7 @@ function pickEvaluation(type) {
   document.getElementById("login-desc").innerHTML = EVAL_META[type].desc;
   document.getElementById("reviewer-name").value = reviewerName;
   document.getElementById("reviewer-email").value = reviewerEmail;
-  document.getElementById("login-judge-instructions").style.display = (type === 'judge' || type === 'judge-test') ? 'block' : 'none';
+  document.getElementById("login-judge-instructions").style.display = (type === 'judge' || type === 'judge-test' || type === 'judge-last9') ? 'block' : 'none';
   show("view-login");
 }
 
@@ -619,8 +635,25 @@ function startEvaluation() {
   }
   if (evaluationType === "judge") {
     activeConversations = CONVERSATIONS;
-    if (!STORAGE.load('judge_progress')) {
+    const savedJudge = STORAGE.load('judge_progress');
+    if (savedJudge?.responses?.length === CONVERSATIONS.length) {
+      judgeResponses = savedJudge.responses;
+      judgeCurrent = savedJudge.current ?? 0;
+    } else {
       judgeResponses = CONVERSATIONS.map(() => ({turnScores: {1:null,2:null,3:null,4:null,5:null}, currentTurn: 1, notes: ""}));
+      judgeCurrent = 0;
+    }
+    show("view-judge-form");
+    renderConversation();
+  }
+  if (evaluationType === "judge-last9") {
+    activeConversations = CONVERSATIONS.slice(31);
+    const savedLast9 = STORAGE.load('judge_last9_progress');
+    if (savedLast9?.responses?.length === activeConversations.length) {
+      judgeResponses = savedLast9.responses;
+      judgeCurrent = savedLast9.current ?? 0;
+    } else {
+      judgeResponses = activeConversations.map(() => ({turnScores: {1:null,2:null,3:null,4:null,5:null}, currentTurn: 1, notes: ""}));
       judgeCurrent = 0;
     }
     show("view-judge-form");
@@ -1097,17 +1130,19 @@ async function submitJudge() {
       const detail = err.detail;
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail) || "Server error");
     }
-    if (evaluationType !== 'judge-test') {
-      completedQuizzes.judge = true;
-      STORAGE.save('completed', completedQuizzes);
-      STORAGE.clear('judge_progress');
-    } else {
+    if (evaluationType === 'judge-test') {
       // Restore full judgeResponses so home card shows correct state after test
       const saved = STORAGE.load('judge_progress');
       judgeResponses = (saved?.responses?.length === CONVERSATIONS.length)
         ? saved.responses
         : CONVERSATIONS.map(() => ({turnScores: {1:null,2:null,3:null,4:null,5:null}, currentTurn: 1, notes: ""}));
       activeConversations = CONVERSATIONS;
+    } else {
+      const quizKey = evaluationType === 'judge-last9' ? 'judge-last9' : 'judge';
+      const storageKey = evaluationType === 'judge-last9' ? 'judge_last9_progress' : 'judge_progress';
+      completedQuizzes[quizKey] = true;
+      STORAGE.save('completed', completedQuizzes);
+      STORAGE.clear(storageKey);
     }
     show("view-success");
   } catch (e) {
@@ -1303,8 +1338,12 @@ function renderHomeCards() {
       total: SCENARIOS.length,
     },
     judge: {
-      done: judgeResponses.filter(r => r.currentTurn > 5).length,
+      done: (() => { const s = STORAGE.load('judge_progress'); return s?.responses?.filter(r => r.currentTurn > 5).length ?? judgeResponses.filter(r => r.currentTurn > 5).length; })(),
       total: CONVERSATIONS.length,
+    },
+    'judge-last9': {
+      done: (() => { const s = STORAGE.load('judge_last9_progress'); return s?.responses?.filter(r => r.currentTurn > 5).length ?? 0; })(),
+      total: 9,
     },
     writer: {
       done: writerConvResponses.filter(r => r.currentStep > 5).length,
@@ -1353,7 +1392,7 @@ function downloadCSV(type) {
       const scores = [1,2,3,4,5].map(t => r.turnScores[t]);
       const nonNull = scores.filter(s => s !== null);
       const avg = nonNull.length ? (nonNull.reduce((a,b) => a+b, 0) / nonNull.length).toFixed(3) : '';
-      return { conversation_id: CONVERSATIONS[i].id, turn_1: scores[0] ?? '', turn_2: scores[1] ?? '', turn_3: scores[2] ?? '', turn_4: scores[3] ?? '', turn_5: scores[4] ?? '', avg, notes: r.notes, reviewer_name: reviewerName, submitted_at: now };
+      return { conversation_id: activeConversations[i].id, turn_1: scores[0] ?? '', turn_2: scores[1] ?? '', turn_3: scores[2] ?? '', turn_4: scores[3] ?? '', turn_5: scores[4] ?? '', avg, notes: r.notes, reviewer_name: reviewerName, submitted_at: now };
     });
     csv = toCSV(fields, rows);
     filename = `manta_judge_${reviewerName.replace(/\s+/g,'_')}.csv`;
